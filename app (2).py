@@ -91,6 +91,9 @@ def dummy():
             if (m,s) in [(3,8),(3,19),(6,12),(9,22)]: p+=.035
             if (m,s) in [(7,5),(10,17)]: p=max(.005,p-.018)
             d=int(rng.binomial(n,p)); parts=rng.multinomial(d,rng.dirichlet([4,2.5,2,1.5]))
-            rows.append({"Tanggal":pd.Timestamp(2024,m,min(s,28)),"No_Subgrup":s,
-             "Jumlah_Produksi":n,"Total_Cacat":d,
-             "KTC_Kepala_Tidak_Center":parts[0],"Kepala_Minus":parts[1],
+            rows.append({
+    "Tanggal": pd.Timestamp(2024, m, min(s, 28)),
+    "No_Subgrup": s,
+    "Jumlah_Produksi": jumlah_produksi,
+    "Jumlah_Cacat": jumlah_cacat
+})
