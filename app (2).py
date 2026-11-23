@@ -1,266 +1,243 @@
-"""QC & Process Capability Monitoring - Paku L10 (PT Surabaya Wire). Jalankan: streamlit run app.py"""
-import io, math, re
+"""WIREQ - Wire Quality Monitoring System | PT Surabaya Wire | Steel Wire Nail L10.  Jalankan: streamlit run app.py"""
+import math, re
 import numpy as np, pandas as pd, plotly.graph_objects as go, streamlit as st
-from scipy.stats import norm
 
-st.set_page_config(page_title="QC & Process Capability - Paku L10", page_icon="📊", layout="wide")
-FAKTOR, ALPHA, K = 4926 / 30, 0.0027, 4
-CAT = ["KTC", "K-", "UC", "BC"]; W = np.ones(4)
+st.set_page_config(page_title="WIREQ · Wire Quality Monitoring System", page_icon="🔩", layout="wide")
+NAVY, AMBER, RED, GREEN, BLUE = "#0B2A43", "#E39B1B", "#C0392B", "#1E8E5A", "#1F6FB2"
+st.markdown("""<style>
+.block-container{padding-top:1.4rem;max-width:1280px}
+[data-testid="stSidebar"]{background:#0B2A43}[data-testid="stSidebar"] *{color:#E6EDF3}
+.hero{background:linear-gradient(135deg,#0B2A43 0%,#16456B 60%,#1F6FB2 100%);border-radius:14px;padding:46px 50px;color:#fff;position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.05) 0 2px,transparent 2px 24px)}
+.hero>*{position:relative}.hero h1{font-size:56px;letter-spacing:8px;margin:0;color:#fff}
+.hero .sub{letter-spacing:3px;font-size:13px;color:#F5C26B;margin-top:2px}.hero .tag{font-size:21px;margin-top:18px;font-weight:600}
+.hero p{max-width:720px;color:#D5E1EC;margin-top:10px}.pill{display:inline-block;border:1px solid rgba(255,255,255,.45);border-radius:20px;padding:3px 14px;font-size:12px;letter-spacing:1px}
+.sec{border-left:5px solid #E39B1B;padding-left:12px;margin:28px 0 12px;font-size:21px;font-weight:700;color:#0B2A43}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.card{background:#fff;border:1px solid #DDE3EA;border-radius:12px;padding:15px 18px;box-shadow:0 1px 3px rgba(11,42,67,.06)}
+.card h4{margin:0 0 5px;color:#0B2A43;font-size:15px}.card p{margin:0;color:#4A5B6B;font-size:13.5px;line-height:1.5}
+.step .no{display:inline-block;background:#0B2A43;color:#fff;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:8px}
+.kpi{background:#fff;border:1px solid #DDE3EA;border-top:4px solid #1F6FB2;border-radius:12px;padding:14px 18px}
+.kpi .l{font-size:12px;color:#6B7B8A;letter-spacing:.6px;text-transform:uppercase}.kpi .v{font-size:27px;font-weight:700;color:#0B2A43;margin-top:2px}.kpi .s{font-size:12px;color:#6B7B8A}
+.box{border-left:5px solid;border-radius:6px;padding:10px 14px;margin:6px 0;background:#fff;border-top:1px solid #DDE3EA;border-right:1px solid #DDE3EA;border-bottom:1px solid #DDE3EA;color:#1C2733}
+</style>""", unsafe_allow_html=True)
+
+FAKTOR = 4926 / 30; CAT = ["KTC", "K-", "UC", "BC"]
 AB = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 MON = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 MI = dict(jan=0, feb=1, mar=2, apr=3, mei=4, may=4, jun=5, jul=6, agu=7, aug=7, sep=8, okt=9, oct=9, nov=10, des=11, dec=11)
-Z = norm.ppf((1 - ALPHA) ** (1 / (K + 1)))
-DEFAULT = [["Jan 2024",1,1142605,1806,0,1205,0],["Feb 2024",1,882406,1221,419,0,0],["Mar 2024",1,882329,677,0,0,0],["Apr 2024",1,598873,0,0,0,547],["Mei 2024",1,926591,3100,0,584,0],["Jun 2024",1,866858,622,0,789,0],["Jul 2024",1,1055019,0,670,688,0],["Agu 2024",1,1017862,568,0,1848,626],["Sep 2024",1,909643,1379,1128,598,0],["Okt 2024",1,1135519,636,0,1924,694],["Nov 2024",1,978176,0,1158,637,0],["Des 2024",1,876531,620,610,0,0],["Jan 2025",1,949057,1197,578,0,0],["Feb 2025",1,950099,0,0,1105,0],["Mar 2025",1,997630,0,0,0,536],["Apr 2025",1,772453,0,0,566,679],["Mei 2025",1,952963,0,0,1064,621],["Jun 2025",1,849628,0,0,0,1195],["Jul 2025",1,1168833,1800,647,511,0],["Agu 2025",1,1043728,2537,607,598,0],["Sep 2025",1,998330,1071,0,1294,0],["Nov 2025",2,1031962,596,0,1861,0],["Des 2025",2,784868,0,0,1170,0],["Jan 2026",2,259036,1839,623,559,0],["Feb 2026",2,244298,0,0,1270,0],["Mar 2026",2,227898,595,1185,0,0],["Apr 2026",2,310140,0,0,0,606],["Mei 2026",2,244093,2433,0,1178,0],["Jun 2026",2,248199,1680,1143,1651,0]]
-PAGES = ["1 · User Guide", "2 · Quality Control Dashboard"]
+DEMO = [["Jan 2024",1,1142605,1806,0,1205,0],["Feb 2024",1,882406,1221,419,0,0],["Mar 2024",1,882329,677,0,0,0],["Apr 2024",1,598873,0,0,0,547],["Mei 2024",1,926591,3100,0,584,0],["Jun 2024",1,866858,622,0,789,0],["Jul 2024",1,1055019,0,670,688,0],["Agu 2024",1,1017862,568,0,1848,626],["Sep 2024",1,909643,1379,1128,598,0],["Okt 2024",1,1135519,636,0,1924,694],["Nov 2024",1,978176,0,1158,637,0],["Des 2024",1,876531,620,610,0,0],["Jan 2025",1,949057,1197,578,0,0],["Feb 2025",1,950099,0,0,1105,0],["Mar 2025",1,997630,0,0,0,536],["Apr 2025",1,772453,0,0,566,679],["Mei 2025",1,952963,0,0,1064,621],["Jun 2025",1,849628,0,0,0,1195],["Jul 2025",1,1168833,1800,647,511,0],["Agu 2025",1,1043728,2537,607,598,0],["Sep 2025",1,998330,1071,0,1294,0],["Nov 2025",2,1031962,596,0,1861,0],["Des 2025",2,784868,0,0,1170,0],["Jan 2026",2,259036,1839,623,559,0],["Feb 2026",2,244298,0,0,1270,0],["Mar 2026",2,227898,595,1185,0,0],["Apr 2026",2,310140,0,0,0,606],["Mei 2026",2,244093,2433,0,1178,0],["Jun 2026",2,248199,1680,1143,1651,0]]
+PAGES = ["1 · User Guide", "2 · Quality Control Analysis"]
+M6 = {"Machine": ["Setting mesin berubah", "Die/cetakan aus", "Mesin sering berhenti", "Perawatan terlambat"],
+      "Man": ["Operator baru/kurang pelatihan", "Pergantian shift", "SOP tidak diikuti", "Kelelahan operator"],
+      "Material": ["Pergantian lot/supplier kawat", "Diameter/kekerasan kawat tidak seragam", "Kawat berkarat/kotor", "Spesifikasi kawat berubah"],
+      "Method": ["Parameter produksi berubah", "SOP belum diperbarui", "Perubahan lini/pesanan", "Urutan proses berubah"],
+      "Measurement": ["Kriteria cacat beda antar inspektur", "Alat ukur belum dikalibrasi", "Sampling tidak konsisten", "Pencatatan cacat tidak lengkap"],
+      "Environment": ["Suhu/kelembapan area produksi", "Area kotor/berdebu", "Pencahayaan inspeksi kurang", "Penyimpanan WIP kurang baik"]}
 
-def fm(v, d=0):
-    return f"{v:,.{d}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def fm(v, d=0): return f"{v:,.{d}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+def H(x): st.markdown(x, unsafe_allow_html=True)
+def sec(t): H(f'<div class="sec">{t}</div>')
+def card(t, p, cls=""): return f'<div class="card {cls}"><h4>{t}</h4><p>{p}</p></div>'
+def box(t, color): H(f'<div class="box" style="border-left-color:{color}">{re.sub(r"[*][*](.+?)[*][*]", r"<b>\1</b>", t)}</div>')
+def kpi(l, v, s="", c=BLUE): return f'<div class="kpi" style="border-top-color:{c}"><div class="l">{l}</div><div class="v">{v}</div><div class="s">{s}&nbsp;</div></div>'
 
 def pn(v):
     if pd.isna(v): return None
     if hasattr(v, "month") and hasattr(v, "year"): return f"{AB[v.month - 1]} {v.year}"
-    s = str(v).strip().lower()
-    m = re.match(r"(\d{4})-(\d{1,2})", s)
+    s = str(v).strip().lower(); m = re.match(r"(\d{4})-(\d{1,2})", s)
     if m and 1 <= int(m[2]) <= 12: return f"{AB[int(m[2]) - 1]} {m[1]}"
     m = re.search(r"([a-z]{3})[a-z]*\.?\s*[-/]?\s*'?(\d{4})", s)
     return f"{AB[MI[m[1]]]} {m[2]}" if m and m[1] in MI else None
 
-def read_any(f):
-    return pd.read_csv(f) if f.name.lower().endswith(".csv") else pd.read_excel(f)
+def normalize(raw):
+    err, warn = [], []
+    def key(pat, srch=False):
+        f = re.search if srch else re.match
+        return next((c for c in raw.columns if f(pat, re.sub(r"[\s_]", "", str(c).lower()))), None)
+    cp, cs, cn, cd, cf = key(r"(periode|tanggal|date|bulan|period)"), key(r"(subgroup|subgrup|nosub|nomor)"), key(r"(produksi|sampel|ukuran|n$)"), key(r"(cacat|defect)", True), key(r"(fase|phase)")
+    ck = {c: key(p) for c, p in zip(CAT, [r"ktc", r"k[-−–]", r"uc", r"bc"])}
+    if cp is None: err.append("Kolom periode/tanggal tidak ditemukan (contoh nama kolom: Periode, Tanggal).")
+    if cn is None: err.append("Kolom jumlah produksi/ukuran sampel tidak ditemukan (contoh: Produksi, Sampel).")
+    if cd is None and not all(ck.values()): err.append("Kolom jumlah cacat tidak ditemukan (contoh: Cacat, atau kolom KTC, K-, UC, BC).")
+    if err: return None, err, warn
+    df = pd.DataFrame({"Periode": raw[cp].map(pn), "n": pd.to_numeric(raw[cn], errors="coerce")})
+    df["Subgroup"] = pd.to_numeric(raw[cs], errors="coerce") if cs else np.nan
+    for c in CAT: df[c] = pd.to_numeric(raw[ck[c]], errors="coerce") if ck[c] else np.nan
+    cat_sum = df[CAT].sum(axis=1, min_count=1)
+    df["d"] = pd.to_numeric(raw[cd], errors="coerce").fillna(cat_sum) if cd else cat_sum
+    df["Fase"] = raw[cf].map(lambda v: 2 if re.search(r"2|ii", str(v), re.I) else 1) if cf else np.nan
+    bad = df.Periode.isna() | ~(df.n > 0) | df.d.isna()
+    if bad.any(): warn.append(f"{int(bad.sum())} baris dilewati (periode tidak terbaca, produksi ≤ 0, atau cacat kosong).")
+    df = df[~bad]; wrong = (df.d > df.n) | (df.d < 0)
+    if wrong.any(): warn.append(f"{int(wrong.sum())} baris dilewati (cacat negatif atau lebih besar dari produksi).")
+    df = df[~wrong]
+    if len(df) < 6: return None, [f"Data valid hanya {len(df)} subgroup; minimal 6 diperlukan."], warn
+    df["y"] = df.Periode.str[4:].astype(int); df["m"] = df.Periode.str[:3].map(AB.index)
+    df["Subgroup"] = df.Subgroup.fillna(df.groupby("Periode").cumcount() + 1)
+    df = df.sort_values(["y", "m", "Subgroup"]).reset_index(drop=True)
+    df["Label"] = np.where(df.duplicated("Periode", keep=False), df.Periode + " #" + df.Subgroup.astype(int).astype(str), df.Periode)
+    return df, err, warn
 
-def read_prod(f):
-    df = read_any(f)
-    key = lambda pat: next((c for c in df.columns if re.match(pat, re.sub(r"[\s_]", "", str(c).lower()))), None)
-    col = {"p": key(r"(periode|bulan|period|tanggal|date)"), "f": key(r"(fase|phase)"), "q": key(r"(produksi|production)")}
-    col.update({c: key(p) for c, p in zip(CAT, [r"ktc", r"k[-−–]", r"uc", r"bc"])})
-    miss = [n for n, k in [("Periode", col["p"]), ("Produksi_kg", col["q"])] + [(c, col[c]) for c in CAT] if k is None]
-    if miss: raise ValueError("Kolom tidak ditemukan: " + ", ".join(miss))
-    out = pd.DataFrame({"Periode": df[col["p"]].map(pn),
-                        "Fase": df[col["f"]].map(lambda v: 2 if re.search(r"2|ii", str(v), re.I) else 1) if col["f"] else 1,
-                        "Produksi_kg": pd.to_numeric(df[col["q"]], errors="coerce"),
-                        **{c: pd.to_numeric(df[col[c]], errors="coerce").fillna(0) for c in CAT}})
-    out = out[out.Periode.notna() & (out.Produksi_kg > 0)].drop_duplicates("Periode", keep="last")
-    if (out.Fase == 1).sum() < 6: raise ValueError("Minimal 6 periode Fase I diperlukan.")
-    return out
-
-def prep(df):
-    d = df.copy(); d["m"] = d.Periode.str[:3].map(AB.index); d["y"] = d.Periode.str[4:].astype(int)
-    d = d.sort_values(["y", "m"]).reset_index(drop=True)
-    d["N"] = d.Produksi_kg * FAKTOR
-    P = (d[CAT] * FAKTOR).div(d.N, axis=0).to_numpy()
-    d["delta"] = P @ W; d["Cacat_kg"] = d[CAT].sum(axis=1)
-    return d, P
-
-def phase1(d, P, mode):
-    f1 = (d.Fase == 1).to_numpy(); s = np.sort(np.maximum(P[f1].mean(0), 1e-12))
-    nC = int(math.ceil(max(5 / s[1], 1 / s[0])))
-    nof = np.full(len(d), float(nC)) if mode == "fixed" else d.N.to_numpy()
-    idx = np.where(f1)[0]; rem = []; dl = d.delta.to_numpy()
+def pchart(df, mode, revise):
+    p = (df.d / df.n).to_numpy(); N = df.N.to_numpy(); D = df.D.to_numpy()
+    base = np.where(df.Fase == 1)[0] if df.Fase.notna().any() else np.arange(len(df))
+    if df[CAT].notna().all().all() and df[CAT].sum().sum() > 0:
+        pb = np.sort(np.maximum(df.loc[base, CAT].div(df.loc[base, "n"], axis=0).mean().to_numpy(), 1e-12)); nC = int(math.ceil(max(5 / pb[1], 1 / pb[0])))
+    else: nC = int(math.ceil(5 / max(p[base].mean(), 1e-9)))
+    nof = np.full(len(df), float(nC)) if mode == "fixed" else N
+    idx = base.copy(); rem = []; ok = True
     for _ in range(11):
-        pb = P[idx].mean(0); GT = W @ pb; v = (W ** 2) @ pb - GT ** 2
-        ooc = np.abs(dl[idx] - GT) > Z * np.sqrt(v / nof[idx])
-        if not ooc.any() or len(idx) - ooc.sum() < 5: break
-        rem += list(idx[ooc]); idx = idx[~ooc]
-    return dict(pb=pb, GT=GT, v=v, rem=[d.Periode[i] for i in rem], used=len(idx), n1=int(f1.sum()), ok=not ooc.any(), nC=nC, nof=nof)
+        pbar = D[idx].sum() / N[idx].sum(); ooc = np.abs(p[idx] - pbar) > 3 * np.sqrt(pbar * (1 - pbar) / nof[idx]); ok = not ooc.any()
+        if ok or not revise or len(idx) - ooc.sum() < 5: break
+        rem += list(df.Label[idx[ooc]]); idx = idx[~ooc]
+    w = 3 * np.sqrt(pbar * (1 - pbar) / nof)
+    return dict(pbar=pbar, ucl=pbar + w, lcl=np.maximum(0, pbar - w), p=p, rem=rem, ok=ok, nC=nC, used=len(idx), nbase=len(base))
 
-def cat(x):
-    return ("Capable", "success") if x >= 1.33 else ("Marginal", "warning") if x >= 1 else ("Not Capable", "error")
-
-def capability(meas, usl, lsl, period):
-    why = []
-    if meas is None: why.append("Dataset awal tidak memuat pengukuran individual/subgrup karakteristik kualitas (hanya total produksi dan berat cacat per kategori). Cp/Cpk tidak boleh dihitung dari jumlah atau persentase cacat.")
-    if usl is None or lsl is None: why.append("USL dan LSL belum diisi (batas spesifikasi tidak ada pada data).")
-    elif usl <= lsl: why.append("USL harus lebih besar dari LSL.")
-    v = np.array([])
-    if meas is not None and period:
-        v = meas.loc[meas.Periode == period, "Nilai"].dropna().to_numpy(float)
-        if len(v) < 2: why.append(f"Tidak ada (atau kurang dari 2) data ukur untuk {period}.")
-    if why: return dict(na=True, why=why)
-    n, mu, sd = len(v), v.mean(), v.std(ddof=1)
-    if not sd > 0: return dict(na=True, why=["Standar deviasi data ukur = 0."])
-    cp = (usl - lsl) / (6 * sd); cpk = min((usl - mu) / (3 * sd), (mu - lsl) / (3 * sd))
-    sk = (((v - mu) / sd) ** 3).mean(); ku = (((v - mu) / sd) ** 4).mean() - 3
-    pn_ = math.exp(-n / 6 * (sk ** 2 + ku ** 2 / 4) / 2)
-    return dict(na=False, v=v, n=n, mu=mu, sd=sd, cp=cp, cpk=cpk, usl=usl, lsl=lsl, pn=pn_, normal=n >= 8 and pn_ >= .05)
-
-def badge(txt, kind):
-    getattr(st, kind)(txt)
-
-# ------------------------------------------------------------------ sidebar
+# ================================================================= sidebar
 st.session_state.setdefault("page", PAGES[0])
-st.sidebar.title("QC & PROCESS CAPABILITY")
-st.sidebar.caption("PT Surabaya Wire · Paku L10")
-page = st.sidebar.radio("Navigasi", PAGES, key="page")
+H('<div style="font-size:30px;font-weight:800;letter-spacing:6px;color:#fff">WIREQ</div><div style="font-size:11px;letter-spacing:2px;color:#F5C26B;margin-bottom:14px">WIRE QUALITY MONITORING SYSTEM</div>')
+page = st.sidebar.radio("Navigasi", PAGES, key="page"); st.sidebar.caption("PT Surabaya Wire · Steel Wire Nail L10")
 
-# ------------------------------------------------------------------ page 1
+# ================================================================= PAGE 1
 if page == PAGES[0]:
-    st.title("QUALITY CONTROL & PROCESS CAPABILITY MONITORING")
-    st.caption("Dokumentasi pengguna · Produk: paku kawat baja L10 · PT Surabaya Wire")
-    st.markdown("""
-### 1. Deskripsi dan Tujuan
-Dashboard menganalisis kualitas produksi paku L10 per bulan: (a) kestabilan proses dengan peta kendali multivariat P (Mp Chart) dan (b) kapabilitas proses terhadap batas spesifikasi (Cp, Cpk). Seluruh angka dihitung dari data produksi (notebook `Mp_Chart_Paku_L10_Bab2.ipynb` atau file Excel yang Anda unggah).
-
-### 2. Sumber dan Struktur Data
-Data bawaan: bulanan Januari 2024 – Juni 2026 (29 periode; Oktober 2025 tidak dimasukkan seperti pada notebook). Fase I = penentuan batas kendali, Fase II = monitoring.
-
-| Kolom | Keterangan |
-|---|---|
-| Periode, Fase | Bulan produksi (mis. Jan 2024) dan fase analisis (1/2) |
-| Produksi_kg | Total produksi; 1 kg = 4926/30 = 164,2 biji |
-| KTC, K-, UC, BC | Berat cacat (kg) tiap kategori |
-
-Data tidak memuat pengukuran individual karakteristik kualitas maupun USL/LSL, sehingga Cp/Cpk memerlukan data tambahan (bagian Process Capability).
-
-### 3. Metode Analisis
-- Proporsi cacat p̂ᵢⱼ = xᵢⱼ / nⱼ; statistik gabungan δⱼ = Σ dᵢ p̂ᵢⱼ (dᵢ = 1, asumsi notebook).
-- CL = Σ dᵢ p̄ᵢ; batas kendali = CL ± z √{ (1/nⱼ) [ Σ dᵢ² p̄ᵢ − (Σ dᵢ p̄ᵢ)² ] }, z = Φ⁻¹[(1−α)^(1/(k+1))] (Šidák), α = 0,0027, k = 4.
-- nⱼ = jumlah biji diperiksa pada subgrup ke-j. Default: n tetap aturan Cochran (sesuai notebook). Opsi lain: nⱼ aktual per subgrup; karena n sangat besar (puluhan hingga ratusan juta biji), batas menjadi sangat sempit dan hampir semua titik tampak di luar batas.
-- Fase I diulang: titik di luar batas dikeluarkan, batas dihitung ulang sampai terkendali; batas final dipakai memonitor seluruh periode.
-- DPO = cacat / (unit × k); DPMO = DPO × 10⁶; level sigma = Φ⁻¹(1 − DPO) + 1,5.
-
-### 4. Indikator
-**Total Production** (kg) · **Total Defect** (jumlah 4 kategori, kg) · **Good Products** = produksi − cacat · **Defect Percentage** = cacat / produksi × 100%.
-
-### 5. CL, UCL, LCL, Cp, Cpk
-| Istilah | Arti |
-|---|---|
-| CL | Garis tengah: rata-rata δ saat proses terkendali |
-| UCL / LCL | Batas kendali atas / bawah. Di atas UCL = pemburukan; di bawah LCL = perbaikan tak wajar yang tetap perlu ditelusuri |
-| USL / LSL | Batas spesifikasi (dari pelanggan/standar, bukan dihitung dari data proses) |
-| Cp | (USL − LSL) / 6σ |
-| Cpk | min[(USL − μ)/3σ, (μ − LSL)/3σ] |
-
-### 6. Kriteria Interpretasi
-| Cp / Cpk | Kategori |
-|---|---|
-| ≥ 1,33 | Capable |
-| 1,00 – < 1,33 | Marginal |
-| < 1,00 | Not Capable |
-
-**Stabilitas ≠ kapabilitas.** Proses terkendali hanya berarti variasinya konsisten; belum tentu memenuhi spesifikasi.
-
-### 7. Langkah Penggunaan
-1. Klik OPEN DASHBOARD. 2. (Opsional) unggah Excel/CSV data produksi di bagian atas dashboard. 3. Pilih tahun dan bulan (default Januari 2024). 4. Baca KPI dan control chart (titik merah = di luar batas, lingkaran oranye = periode terpilih; hover untuk detail, seret untuk zoom). 5. Isi USL/LSL dan unggah data ukur (kolom Periode, Nilai) untuk Cp/Cpk. 6. Baca Process Evaluation dan Analysis Summary.
-""")
-    st.button("OPEN DASHBOARD", type="primary", on_click=lambda: st.session_state.update(page=PAGES[1]))
+    H('<div class="hero"><span class="pill">STEEL WIRE NAIL · L10</span><h1>WIREQ</h1><div class="sub">WIRE QUALITY MONITORING SYSTEM</div>'
+      '<div class="tag">Monitor Quality. Control Process. Improve Performance.</div>'
+      '<p>Sistem monitoring kualitas produksi paku kawat baja L10 di PT Surabaya Wire. Unggah data produksi, analisis kestabilan proses dengan Statistical Process Control, lalu telusuri kemungkinan penyebab penyimpangan.</p></div>')
+    sec("About the Dashboard")
+    H('<div class="grid">' + "".join(card(t, p) for t, p in [("Memantau Kualitas", "Melihat jumlah produksi, cacat, dan produk baik tiap periode."), ("Analisis Proporsi Cacat", "Menghitung proporsi cacat tiap subgroup."), ("Kestabilan Proses", "Mengevaluasi apakah proses berada dalam batas kendali statistik."), ("Penyebab Penyimpangan", "Mengidentifikasi kemungkinan penyebab dengan Fishbone (6M)."), ("Dukungan Keputusan", "Memberi dasar data untuk tindak lanjut pengendalian kualitas.")]) + "</div>")
+    sec("Understanding the Analysis")
+    a, b = st.columns([1.05, 1])
+    with a:
+        H('<div class="grid" style="grid-template-columns:1fr 1fr">' + "".join(card(t, p) for t, p in [
+            ("Statistical Process Control", "Metode statistik untuk membedakan variasi wajar proses dari penyimpangan yang perlu diselidiki."),
+            ("P-Chart", "Peta kendali untuk proporsi cacat: pᵢ = dᵢ / nᵢ. Batas kendali menyesuaikan ukuran sampel."),
+            ("Central Line (CL)", "Rata-rata proporsi cacat proses: p̄ = total cacat / total produksi."),
+            ("Upper Control Limit", "UCL = p̄ + 3√[p̄(1−p̄)/n]. Titik di atasnya menandakan pemburukan."),
+            ("Lower Control Limit", "LCL = max(0, p̄ − 3√[p̄(1−p̄)/n]). Titik di bawahnya perlu ditelusuri, meski tampak baik."),
+            ("Out of Control", "Titik di luar UCL/LCL: ada kemungkinan penyebab khusus yang mengubah proses.")]) + "</div>")
+    with b:
+        xs = list(range(1, 15)); ys = [20, 22, 19, 21, 18, 23, 20, 34, 21, 19, 22, 20, 6, 21]; out = [y > 33 or y < 9 for y in ys]
+        f = go.Figure()
+        for n, v, c, dsh in [("UCL", 33, RED, "dash"), ("CL", 21, GREEN, "solid"), ("LCL", 9, RED, "dash")]: f.add_trace(go.Scatter(x=[1, 14], y=[v, v], mode="lines", name=n, line=dict(color=c, dash=dsh)))
+        f.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", name="Proporsi cacat", line=dict(color=BLUE, width=1.5), marker=dict(size=9, color=[RED if o else BLUE for o in out], symbol=["diamond" if o else "circle" for o in out])))
+        f.add_annotation(x=8, y=34, text="Di luar batas", ax=40, ay=-25, arrowcolor=RED, font=dict(color=RED)); f.add_annotation(x=5, y=18, text="Di dalam batas", ax=0, ay=40, arrowcolor=BLUE, font=dict(color=BLUE))
+        f.update_layout(title="Ilustrasi cara membaca P-Chart (data contoh)", height=360, margin=dict(l=40, r=10, t=50, b=30), legend=dict(orientation="h", y=-0.12), yaxis_title="% cacat", template="plotly_white")
+        st.plotly_chart(f, width="stretch")
+    sec("How to Use WIREQ")
+    H('<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">' + "".join(card(f'<span class="no">STEP {i:02d}</span><br>{t}', p, "step") for i, (t, p) in enumerate([
+        ("Upload Data", "Unggah file Excel atau CSV berisi data produksi (atau pakai data contoh/input manual)."), ("Select Period", "Pilih bulan dan tahun yang akan dianalisis."),
+        ("Generate Analysis", "Sistem menghitung proporsi cacat dan batas kendali otomatis."), ("Evaluate Process", "Baca P-Chart: apakah proses terkendali atau tidak."),
+        ("Root Cause Analysis", "Jika tidak terkendali, telusuri kemungkinan penyebab dengan Fishbone Diagram.")], 1)) + "</div>")
+    st.write(""); st.button("START ANALYSIS", type="primary", on_click=lambda: st.session_state.update(page=PAGES[1]))
     st.stop()
 
-# ------------------------------------------------------------------ page 2
-st.title("Quality Control Dashboard")
-with st.expander("📁 Data produksi (unggah Excel/CSV)", expanded=False):
-    up = st.file_uploader("File data produksi", type=["xlsx", "xls", "csv"])
-    tpl = io.BytesIO(); pd.DataFrame(DEFAULT, columns=["Periode", "Fase", "Produksi_kg"] + CAT).to_excel(tpl, index=False)
-    st.download_button("Unduh template/data bawaan (.xlsx)", tpl.getvalue(), "template_data_produksi.xlsx")
-    st.caption("Kolom: Periode (mis. Jan 2024 atau tanggal), Fase (1/2), Produksi_kg, KTC, K-, UC, BC (kg). Minimal 6 periode Fase I.")
-src = "Data bawaan (notebook)"; raw = pd.DataFrame(DEFAULT, columns=["Periode", "Fase", "Produksi_kg"] + CAT)
-if up is not None:
-    try: raw = read_prod(up); src = up.name
-    except Exception as e: st.error(f"Gagal memuat file: {e}. Memakai data bawaan.")
-d, P = prep(raw); st.caption(f"Sumber data: {src} · {len(d)} periode (Fase I: {(d.Fase == 1).sum()}, Fase II: {(d.Fase == 2).sum()})")
-
-years = sorted(d.y.unique()); f = st.columns(4)
-yr = f[0].selectbox("Tahun produksi", years, index=years.index(2024) if 2024 in years else 0)
-mo = f[1].selectbox("Bulan produksi", range(12), format_func=lambda i: MON[i], index=0)
-mode = f[2].selectbox("Ukuran sampel batas kendali", ["fixed", "actual"], format_func=lambda x: "Aktual per subgrup (nⱼ)" if x == "actual" else "Tetap (Cochran, seperti notebook)")
-rng = f[3].selectbox("Rentang grafik", ["Seluruh periode", "Tahun terpilih"])
-
-S = phase1(d, P, mode); h = Z * np.sqrt(S["v"] / S["nof"])
-d["CL"] = S["GT"]; d["UCL"] = S["GT"] + h; d["LCL"] = S["GT"] - h
-d["Status"] = np.where(d.delta > d.UCL, "OOC ▲ di atas UCL", np.where(d.delta < d.LCL, "OOC ▼ di bawah LCL", "Terkendali"))
-sm = d[(d.y == yr) & (d.m == mo)]; sel = sm.iloc[0] if len(sm) else None; si = sm.index[0] if len(sm) else None
-period = f"{AB[mo]} {yr}"
-if sel is None: st.warning(f"Tidak ada data produksi untuk {MON[mo]} {yr} pada dataset ini.")
-
-st.subheader(f"A. Production Overview — {MON[mo]} {yr}")
-k = st.columns(4)
-if sel is not None:
-    dpo = sel.Cacat_kg * FAKTOR / (sel.N * K); dpmo = dpo * 1e6; sg = norm.ppf(1 - dpo) + 1.5 if dpo > 0 else float("nan")
-    k[0].metric("Total Production", f"{fm(sel.Produksi_kg)} kg"); k[1].metric("Total Defect", f"{fm(sel.Cacat_kg)} kg")
-    k[2].metric("Good Products", f"{fm(sel.Produksi_kg - sel.Cacat_kg)} kg"); k[3].metric("Defect Percentage", f"{fm(sel.Cacat_kg / sel.Produksi_kg * 100, 3)} %")
-    st.caption("Cacat per kategori (kg): " + " · ".join(f"{c} {fm(sel[c])}" for c in CAT) + f" · DPMO {fm(dpmo)} · ≈ {fm(sg, 2)} sigma")
+# ================================================================= PAGE 2
+H('<div style="font-size:28px;font-weight:800;color:#0B2A43;letter-spacing:1px">Quality Control Analysis</div><div style="color:#6B7B8A;margin-bottom:6px">WIREQ · Steel Wire Nail L10 · PT Surabaya Wire</div>')
+sec("A. Data Management")
+src = st.radio("Sumber data", ["Dataset contoh (data notebook L10)", "Upload Excel / CSV", "Input manual"], horizontal=True)
+unit = st.radio("Satuan data produksi & cacat", ["kg (dikonversi 164,2 biji/kg)", "biji / unit"], horizontal=True, index=0 if src.startswith("Dataset") else 1, key="u" + src)
+raw = None
+if src.startswith("Dataset"):
+    raw = pd.DataFrame(DEMO, columns=["Periode", "Fase", "Produksi"] + CAT); raw["Subgroup"] = range(1, len(raw) + 1); raw["Cacat"] = raw[CAT].sum(axis=1)
+elif src.startswith("Upload"):
+    up = st.file_uploader("File data (.xlsx / .csv)", type=["xlsx", "xls", "csv"])
+    st.caption("Kolom minimal: Periode/Tanggal, Subgroup (opsional), Produksi (ukuran sampel), Cacat. Opsional: KTC, K-, UC, BC, Fase (1/2).")
+    if up is not None:
+        try: raw = pd.read_csv(up) if up.name.lower().endswith(".csv") else pd.read_excel(up)
+        except Exception as e: st.error(f"File tidak dapat dibaca: {e}")
 else:
-    for c, n in zip(k, ["Total Production", "Total Defect", "Good Products", "Defect Percentage"]): c.metric(n, "—")
+    tpl = pd.DataFrame({"Periode": pd.Series([None] * 8, dtype="object"), "Subgroup": pd.Series([None] * 8, dtype="float"), "Produksi": pd.Series([None] * 8, dtype="float"), "Cacat": pd.Series([None] * 8, dtype="float"),
+                        **{c: pd.Series([None] * 8, dtype="float") for c in CAT}})
+    st.caption("Isi tabel (contoh periode: Jan 2024). Kolom Cacat boleh kosong jika KTC, K-, UC, BC diisi. Tambah baris dengan baris kosong paling bawah. Minimal 6 subgroup.")
+    raw = st.data_editor(tpl, num_rows="dynamic", width="stretch", key="manual")
+if raw is None:
+    st.info("Pilih atau unggah data untuk memulai analisis."); st.stop()
+df, errs, warns = normalize(raw)
+for w in warns: st.warning(w)
+if errs:
+    for e in errs: st.error(e)
+    st.stop()
+f = FAKTOR if unit.startswith("kg") else 1.0
+df["N"] = df.n * f; df["D"] = df.d * f
+uni = "kg" if unit.startswith("kg") else "unit"
+st.success(f"Struktur data valid: {len(df)} subgroup · {df.Periode.nunique()} periode" + (" · kolom Fase terbaca" if df.Fase.notna().any() else " · tanpa kolom Fase (seluruh data jadi baseline)") + (" · kategori cacat tersedia" if df[CAT].notna().all().all() else ""))
+with st.expander("Preview data (10 baris pertama)"): st.dataframe(df[["Periode", "Subgroup", "n", "d"] + CAT + (["Fase"] if df.Fase.notna().any() else [])].head(10), hide_index=True, width="stretch")
 
-st.subheader("B. Statistical Process Control — Mp Chart")
-st.caption(f"δ = Σdᵢp̂ᵢ · CL = {fm(S['GT'], 6)} · z (Šidák) = {fm(Z, 4)} · batas Fase I final dari {S['used']} subgrup"
-           + (f" (dikeluarkan: {', '.join(S['rem'])})" if S["rem"] else "") + ("" if S["ok"] else " · belum konvergen")
-           + f" · ukuran sampel: {'tetap n = ' + fm(S['nC']) if mode == 'fixed' else 'aktual per subgrup'}")
-v = d if rng == "Seluruh periode" else d[d.y == yr]
+sec("B. Filter Analysis")
+c = st.columns(4); years = sorted(df.y.unique())
+yr = c[0].selectbox("Tahun produksi", years, index=years.index(2024) if 2024 in years else 0)
+mo = c[1].selectbox("Bulan produksi", range(12), format_func=lambda i: MON[i])
+mode = c[2].selectbox("Ukuran sampel batas kendali", ["fixed", "actual"], format_func=lambda x: "Tetap (Cochran, sesuai Bab 2)" if x == "fixed" else "Aktual per subgroup (nᵢ)")
+rng = c[3].selectbox("Rentang grafik", ["Seluruh periode", "Tahun terpilih"])
+revise = st.checkbox("Revisi batas kendali iteratif (titik di luar batas pada baseline dikeluarkan lalu batas dihitung ulang)", value=True)
+P = pchart(df, mode, revise)
+df["p"] = P["p"] * 100; df["CL"] = P["pbar"] * 100; df["UCL"] = P["ucl"] * 100; df["LCL"] = P["lcl"] * 100
+df["Status"] = np.where(P["p"] > P["ucl"], "OOC ▲ di atas UCL", np.where(P["p"] < P["lcl"], "OOC ▼ di bawah LCL", "Terkendali"))
+sm = df[(df.y == yr) & (df.m == mo)]; period = f"{AB[mo]} {yr}"
+if mode == "actual" and (df.Status != "Terkendali").mean() > .6:
+    st.warning("Pada mode nᵢ aktual, ukuran sampel sangat besar sehingga batas kendali sangat sempit dan hampir semua titik tampak di luar batas (overdispersi). Gunakan mode Tetap (Cochran) bila itu metode yang dipakai pada analisis.")
+
+sec(f"C. Production Overview — {MON[mo]} {yr}")
+if len(sm):
+    T, Dd = sm.n.sum(), sm.d.sum()
+    H('<div class="grid">' + kpi("Total Production", f"{fm(T)} {uni if uni == 'kg' else ''}") + kpi("Total Defect", f"{fm(Dd)} {uni if uni == 'kg' else ''}", c=RED) + kpi("Good Products", f"{fm(T - Dd)} {uni if uni == 'kg' else ''}", c=GREEN) + kpi("Defect Percentage", f"{fm(Dd / T * 100, 3)} %", f"CL proses {fm(P['pbar'] * 100, 3)} %", AMBER) + "</div>")
+else: st.warning(f"Tidak ada data untuk {MON[mo]} {yr}.")
+
+sec("D. Statistical Process Control — P-Chart")
+st.caption(f"pᵢ = dᵢ/nᵢ · CL = p̄ = {fm(P['pbar'] * 100, 4)}% · UCL = p̄ + 3√[p̄(1−p̄)/nᵢ] · LCL = max(0, p̄ − 3√[p̄(1−p̄)/nᵢ]) · "
+           + (f"n tetap Cochran = {fm(P['nC'])}" if mode == "fixed" else "nᵢ aktual (biji)") + f" · baseline {P['used']} dari {P['nbase']} subgroup" + (f" (dikeluarkan: {', '.join(P['rem'])})" if P["rem"] else "") + ("" if P["ok"] else " · belum konvergen"))
+v = df if rng == "Seluruh periode" else df[df.y == yr]
 fig = go.Figure()
-for n, c, dash in [("UCL", "#c62828", "dash"), ("CL", "#1e8e3e", "solid"), ("LCL", "#c62828", "dash")]:
-    fig.add_trace(go.Scatter(x=v.Periode, y=v[n], name=n, mode="lines", line=dict(color=c, dash=dash, width=1.5), hoverinfo="skip"))
-ooc = v.Status != "Terkendali"
-fig.add_trace(go.Scatter(x=v.Periode, y=v.delta, name="δ", mode="lines+markers", line=dict(color="#2563eb", width=1, dash="dot"),
-    marker=dict(size=8, color=np.where(ooc, "#e53935", "#2563eb"), symbol=np.where(ooc, "diamond", "circle")),
-    customdata=np.c_[v.Fase, v.UCL, v.LCL, v.Produksi_kg, v.Cacat_kg, v.Status],
-    hovertemplate="%{x} (Fase %{customdata[0]})<br>δ = %{y:.6f}<br>UCL = %{customdata[1]:.6f}<br>LCL = %{customdata[2]:.6f}<br>Produksi %{customdata[3]:,.0f} kg · cacat %{customdata[4]:,.0f} kg<br>%{customdata[5]}<extra></extra>"))
-if sel is not None and si in v.index:
-    fig.add_trace(go.Scatter(x=[sel.Periode], y=[sel.delta], name="Periode terpilih", mode="markers", hoverinfo="skip",
-                             marker=dict(size=18, symbol="circle-open", color="#f59e0b", line=dict(width=3))))
-fig.update_layout(height=420, margin=dict(l=60, r=20, t=30, b=60), xaxis=dict(type="category", tickangle=-60), yaxis=dict(title="δ", tickformat=".5f"), legend=dict(orientation="h", y=1.1))
+for n, col, dsh in [("UCL", RED, "dash"), ("CL", GREEN, "solid"), ("LCL", RED, "dash")]: fig.add_trace(go.Scatter(x=v.Label, y=v[n], name=n, mode="lines", line=dict(color=col, dash=dsh, width=1.5), hoverinfo="skip"))
+oc = v.Status != "Terkendali"
+fig.add_trace(go.Scatter(x=v.Label, y=v.p, name="pᵢ (% cacat)", mode="lines+markers", line=dict(color=BLUE, width=1, dash="dot"), marker=dict(size=9, color=np.where(oc, "#E53935", BLUE), symbol=np.where(oc, "diamond", "circle")),
+    customdata=np.c_[v.n, v.d, v.UCL, v.LCL, v.Status], hovertemplate="%{x}<br>pᵢ = %{y:.4f}%<br>nᵢ = %{customdata[0]:,.0f} · dᵢ = %{customdata[1]:,.0f}<br>UCL = %{customdata[2]:.4f}% · LCL = %{customdata[3]:.4f}%<br>%{customdata[4]}<extra></extra>"))
+if len(sm): s2 = sm[sm.index.isin(v.index)]; fig.add_trace(go.Scatter(x=s2.Label, y=s2.p, name="Periode terpilih", mode="markers", hoverinfo="skip", marker=dict(size=19, symbol="circle-open", color=AMBER, line=dict(width=3))))
+fig.update_layout(height=430, template="plotly_white", margin=dict(l=60, r=20, t=20, b=60), xaxis=dict(type="category", tickangle=-60), yaxis=dict(title="Proporsi cacat (%)"), legend=dict(orientation="h", y=1.1))
 st.plotly_chart(fig, width="stretch")
-tb = v[["Periode", "Fase", "Produksi_kg", "Cacat_kg", "delta", "LCL", "CL", "UCL", "Status"]]
-st.dataframe(tb.style.apply(lambda r: ["background-color:#fff4d6;color:#000" if r.Periode == period else ""] * len(r), axis=1)
-             .format({"Produksi_kg": "{:,.0f}", "Cacat_kg": "{:,.0f}", "delta": "{:.6f}", "LCL": "{:.6f}", "CL": "{:.6f}", "UCL": "{:.6f}"}),
-             hide_index=True, width="stretch", height=300)
+tb = v[["Label", "n", "d", "p", "LCL", "CL", "UCL", "Status"]].rename(columns={"Label": "Subgroup", "n": f"Produksi ({uni})", "d": f"Cacat ({uni})", "p": "pᵢ (%)"})
+st.dataframe(tb.style.apply(lambda r: ["background-color:#FFF4D6;color:#000" if r.Subgroup in set(sm.Label) else ""] * len(r), axis=1).format({tb.columns[1]: "{:,.0f}", tb.columns[2]: "{:,.0f}", "pᵢ (%)": "{:.4f}", "LCL": "{:.4f}", "CL": "{:.4f}", "UCL": "{:.4f}"}), hide_index=True, width="stretch", height=300)
 
-st.subheader("C. Process Capability Analysis")
-c1 = st.columns([1, 1, 2])
-usl = c1[0].number_input("USL", value=None, format="%.4f", placeholder="isi USL"); lsl = c1[1].number_input("LSL", value=None, format="%.4f", placeholder="isi LSL")
-mf = c1[2].file_uploader("Data ukur (Excel/CSV, kolom Periode dan Nilai)", type=["xlsx", "xls", "csv"])
-meas = None
-if mf is not None:
-    try:
-        m = read_any(mf); m = m.iloc[:, :2]; m.columns = ["Periode", "Nilai"]
-        m["Periode"] = m.Periode.map(pn); m["Nilai"] = pd.to_numeric(m.Nilai.astype(str).str.replace(",", "."), errors="coerce"); meas = m.dropna()
-    except Exception as e: st.error(f"Gagal membaca data ukur: {e}")
-C = capability(meas, usl, lsl, period if sel is not None else None)
-cc = st.columns(4)
-if C["na"]:
-    cc[0].metric("Cp", "Not Available"); cc[1].metric("Cpk", "Not Available"); cc[2].metric("USL", fm(usl, 3) if usl is not None else "—"); cc[3].metric("LSL", fm(lsl, 3) if lsl is not None else "—")
-    st.warning("**Not Available.** Alasan:\n\n" + "\n".join(f"- {w}" for w in C["why"]))
+sec("E. Process Evaluation")
+if len(sm):
+    bad = sm[sm.Status != "Terkendali"]
+    if bad.empty: box("**Process Stability:** Terkendali (in control). Semua titik pada periode ini berada di antara LCL dan UCL.", GREEN)
+    else: box("**Process Stability:** Tidak terkendali. " + ", ".join(f"{r.Label}: {r.Status}" for r in bad.itertuples()) + ". Lanjutkan ke Root Cause Analysis.", RED)
+n2 = df[df.Fase == 2] if df.Fase.notna().any() else df.iloc[0:0]
+if len(n2): st.caption(f"Fase II: {(n2.Status != 'Terkendali').sum()} dari {len(n2)} subgroup di luar batas kendali. Seluruh periode: {(df.Status != 'Terkendali').sum()} dari {len(df)}.")
+else: st.caption(f"Seluruh periode: {(df.Status != 'Terkendali').sum()} dari {len(df)} subgroup di luar batas kendali.")
+
+sec("F. Root Cause Analysis — Fishbone (6M)")
+ooc_list = list(df[df.Status != "Terkendali"].Label)
+if not ooc_list: st.info("Tidak ada titik di luar batas kendali, sehingga Root Cause Analysis tidak diperlukan.")
 else:
-    a, b = cat(C["cp"]), cat(C["cpk"])
-    cc[0].metric("Cp", fm(C["cp"], 3)); cc[1].metric("Cpk", fm(C["cpk"], 3)); cc[2].metric("USL", fm(usl, 3)); cc[3].metric("LSL", fm(lsl, 3))
-    hc, ic = st.columns(2)
-    vv = C["v"]; lo, hi = min(vv.min(), lsl), max(vv.max(), usl); nb = min(20, max(6, math.ceil(math.sqrt(C["n"]))))
-    cnt, edges = np.histogram(vv, bins=nb, range=(lo, hi)); w = edges[1] - edges[0]
-    hf = go.Figure(go.Bar(x=(edges[:-1] + edges[1:]) / 2, y=cnt, width=w * .95, name="Frekuensi", marker_color="#6fa8dc"))
-    if C["normal"]:
-        xs = np.linspace(lo, hi, 120); hf.add_trace(go.Scatter(x=xs, y=C["n"] * w * norm.pdf(xs, C["mu"], C["sd"]), mode="lines", name="Normal", line=dict(color="#e53935")))
-    for x, t, c in [(lsl, "LSL", "#c62828"), (usl, "USL", "#c62828"), (C["mu"], "μ", "#1e8e3e")]: hf.add_vline(x=x, line=dict(color=c, dash="dash"), annotation_text=t)
-    hf.update_layout(height=320, margin=dict(l=40, r=10, t=30, b=40), showlegend=False, yaxis_title="Frekuensi"); hc.plotly_chart(hf, width="stretch")
-    with ic:
-        badge(f"Kapabilitas (Cpk): {b[0]}", b[1])
-        st.write(f"n = {C['n']} · μ = {fm(C['mu'], 4)} · σ = {fm(C['sd'], 4)}. Cp {fm(C['cp'], 3)} ({a[0]}), Cpk {fm(C['cpk'], 3)} ({b[0]}).")
-        if C["cp"] - C["cpk"] > .1: st.write("Cpk lebih kecil dari Cp: rata-rata proses bergeser dari titik tengah spesifikasi.")
-        if C["n"] < 30: st.write("**n < 30: estimasi kurang andal.**")
-        st.caption(f"Uji normalitas (Jarque–Bera) p ≈ {fm(C['pn'], 3)}: " + ("asumsi normal dapat diterima, kurva normal ditampilkan." if C["normal"] else "asumsi normal tidak didukung/data terlalu sedikit; kurva normal tidak ditampilkan, tafsirkan Cp/Cpk dengan hati-hati."))
+    st.caption("Daftar di bawah adalah kemungkinan penyebab (hipotesis) untuk dikonfirmasi bersama QC dan lapangan, bukan hasil yang sudah terbukti.")
+    default_i = ooc_list.index(sm[sm.Status != "Terkendali"].Label.iloc[0]) if len(sm) and (sm.Status != "Terkendali").any() else 0
+    foc = st.selectbox("Subgroup di luar batas yang dianalisis", ooc_list, index=default_i); r = df[df.Label == foc].iloc[0]
+    dom = max(CAT, key=lambda k: r[k]) if r[CAT].notna().all() and r[CAT].sum() > 0 else None
+    head = f"{foc}: cacat {fm(r.p, 3)}%" + (f" (dominan {dom})" if dom else "")
+    sel_c = {}; cols = st.columns(3)
+    for i, (m6, opts) in enumerate(M6.items()):
+        with cols[i % 3]:
+            ch = st.multiselect(m6, opts, key=f"ms{m6}"); extra = st.text_input(f"{m6} — penyebab lain", key=f"tx{m6}")
+            sel_c[m6] = ch + ([extra] if extra.strip() else [])
+    fb = go.Figure(); fb.add_shape(type="line", x0=0, y0=0, x1=11, y1=0, line=dict(color=NAVY, width=4))
+    fb.add_annotation(x=11.2, y=0, text=f"<b>{head}</b>", showarrow=False, xanchor="left", align="left", bordercolor=RED, borderwidth=2, borderpad=8, bgcolor="#FDECEA", font=dict(size=12), width=190)
+    for i, (m6, cs) in enumerate(sel_c.items()):
+        top = i < 3; x0 = 1.2 + (i % 3) * 3.4; sg = 1 if top else -1
+        fb.add_shape(type="line", x0=x0, y0=3.4 * sg, x1=x0 + 1.5, y1=0, line=dict(color="#5B7083", width=2))
+        fb.add_annotation(x=x0, y=3.7 * sg, text=f"<b>{m6}</b>", showarrow=False, font=dict(color="#fff", size=12), bgcolor=NAVY, borderpad=4)
+        for k, t in enumerate(cs[:5]):
+            y = (2.9 - 0.62 * k) * sg; xb = x0 + 1.5 * (3.4 - abs(y)) / 3.4
+            fb.add_annotation(x=xb, y=y, text=t if len(t) < 34 else t[:32] + "…", showarrow=False, xanchor="right", font=dict(size=10, color="#1C2733"))
+    fb.update_layout(height=520, template="plotly_white", margin=dict(l=10, r=10, t=10, b=10), xaxis=dict(visible=False, range=[-1, 15.5]), yaxis=dict(visible=False, range=[-4.3, 4.3]))
+    st.plotly_chart(fb, width="stretch")
+    n_sel = sum(len(x) for x in sel_c.values()); st.caption(f"{n_sel} kemungkinan penyebab dipilih. Verifikasi dengan data lapangan (mis. bandingkan bulan sebelum dan sesudah perubahan).")
 
-st.subheader("D. Process Evaluation")
-e1, e2 = st.columns(2)
-with e1:
-    st.markdown("**1. Process Stability**")
-    if sel is None: badge("Tidak ada data periode terpilih.", "info")
-    elif sel.Status == "Terkendali": badge("Terkendali (in control): δ berada di antara LCL dan UCL.", "success")
-    elif "▲" in sel.Status: badge("Tidak terkendali: δ di atas UCL (pemburukan kualitas).", "error")
-    else: badge("Tidak terkendali: δ di bawah LCL (perbaikan tak wajar; tetap telusuri penyebabnya).", "warning")
-    p2 = d[d.Fase == 2]; st.caption(f"Konteks: Fase I final memakai {S['used']} dari {S['n1']} subgrup; Fase II: {(p2.Status != 'Terkendali').sum()} dari {len(p2)} bulan di luar batas.")
-with e2:
-    st.markdown("**2. Process Capability**")
-    if C["na"]: badge("Not Available: Cp/Cpk belum dapat dihitung (lihat alasan di bagian C).", "info")
-    else: badge(f"{cat(C['cpk'])[0]}: Cpk = {fm(C['cpk'], 3)}, Cp = {fm(C['cp'], 3)}.", cat(C["cpk"])[1])
-    st.caption("Proses yang terkendali belum tentu capable; keduanya dinilai terpisah.")
-
-st.subheader("E. Analysis Summary")
-if sel is None: st.info(f"Tidak ada data produksi pada {MON[mo]} {yr}, sehingga analisis tidak dapat dibuat.")
-else:
-    ct = W * (P[si] - S["pb"]); top = CAT[int(ct.argmax())]; big = max(zip(CAT, [sel[c] for c in CAT]), key=lambda t: t[1])
-    est = (f"berada di dalam batas kendali ({fm(sel.LCL, 6)} – {fm(sel.UCL, 6)}), sehingga proses dinilai **terkendali secara statistik**." if sel.Status == "Terkendali"
-           else f"berada **di atas UCL** ({fm(sel.UCL, 6)}); proses **tidak terkendali** dengan indikasi pemburukan, penyumbang terbesar: **{top}**." if "▲" in sel.Status
-           else f"berada **di bawah LCL** ({fm(sel.LCL, 6)}); proses **tidak terkendali** (perbaikan tak wajar), perlu ditelusuri penyebabnya.")
-    capt = ("Kapabilitas proses **Not Available** karena data ukur individual dan/atau USL/LSL belum tersedia; kapabilitas tidak dapat disimpulkan dari data cacat." if C["na"]
-            else f"Kapabilitas proses: Cp = {fm(C['cp'], 3)}, Cpk = {fm(C['cpk'], 3)} → **{cat(C['cpk'])[0]}**.")
-    st.info(f"Pada **{MON[mo]} {yr}** (Fase {'I' if sel.Fase == 1 else 'II'}), produksi mencapai **{fm(sel.Produksi_kg)} kg** dengan total cacat **{fm(sel.Cacat_kg)} kg ({fm(sel.Cacat_kg / sel.Produksi_kg * 100, 3)}%)**; "
-            f"kategori cacat terbesar adalah **{big[0]}** ({fm(big[1])} kg). Level kualitas setara **{fm(dpmo)} DPMO**" + (f" (≈ {fm(sg, 2)} sigma)" if sg == sg else "") +
-            f". Nilai δ = {fm(sel.delta, 6)} {est} {capt} Stabilitas dan kapabilitas adalah dua penilaian berbeda dan tidak boleh disamakan.")
+sec("G. Analysis Summary")
+if len(sm):
+    bad = sm[sm.Status != "Terkendali"]; big = max(CAT, key=lambda k: sm[k].sum()) if sm[CAT].notna().all().all() and sm[CAT].sum().sum() > 0 else None
+    box(f"Pada **{MON[mo]} {yr}**, produksi **{fm(sm.n.sum())} {uni}** dengan cacat **{fm(sm.d.sum())} {uni} ({fm(sm.d.sum() / sm.n.sum() * 100, 3)}%)**, dibanding CL proses **{fm(P['pbar'] * 100, 3)}%**."
+        + (f" Kategori cacat terbesar: **{big}**." if big else "") + (" Proses **terkendali secara statistik** pada periode ini." if bad.empty else f" **{len(bad)} subgroup di luar batas kendali** ({'; '.join(bad.Status.str[:5].unique())}); proses **tidak terkendali** dan perlu ditelusuri penyebabnya (lihat Fishbone)."), NAVY)
+else: st.info("Pilih periode yang memiliki data untuk melihat ringkasan.")
